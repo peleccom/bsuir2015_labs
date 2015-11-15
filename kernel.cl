@@ -14,8 +14,8 @@ __local VALUE_TYPE Bs[BLOCK_SIZE][BLOCK_SIZE];
   int gX = get_group_id(1);
   int lY = get_local_id(0);
   int lX = get_local_id(1);
-  int y = get_global_id(1);
-  int x = get_global_id(0);
+  int y = get_global_id(0);
+  int x = get_global_id(1);
 
 
   VALUE_TYPE sum = 0;
@@ -63,10 +63,14 @@ __local VALUE_TYPE Bs[BLOCK_SIZE][BLOCK_SIZE];
         // one element of each matrix
         if (x < wA && y < hA){
           As[lY][lX] = A[a + wA * lY + lX];
-          Bs[lY][lX] = B[b + wB * lY + lX];
         }
         else{
           As[lY][lX] = 0;
+        }
+        if (x < wB && y < hB){
+          Bs[lY][lX] = B[b + wB * lY + lX];
+        }
+        else{
           Bs[lY][lX] = 0;
         }
         // Synchronize to make sure the matrices 
@@ -76,9 +80,9 @@ __local VALUE_TYPE Bs[BLOCK_SIZE][BLOCK_SIZE];
         // Multiply the two matrices together;
         // each thread computes one element
         // of the block sub-matrix
-        for (int k = 0; k < BLOCK_SIZE; ++k)
+        for (int k = 0; k < BLOCK_SIZE; ++k){
             sum += As[lY][k] * Bs[k][lX];
- 
+        }
         // Synchronize to make sure that the preceding
         // computation is done before loading two new
         // sub-matrices of A and B in the next iteration
