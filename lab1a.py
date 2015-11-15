@@ -5,13 +5,20 @@ from __future__ import absolute_import, print_function
 import numpy as np
 import pyopencl as cl
 from mpi4py import MPI
+import threading
+import Queue
+
 
 DIMENSIONS = 10000
 CHECK_CPU = True
 CLUSTER_CPU_COMPUTATION = True
 BLOCK_SIZE = 16
 
-
+def multiply_on_cpu(a, b, queue=None):
+    c = np.dot(a, b)
+    if queue:
+        queue.put(c)
+    return c
 
 def multiply_on_device(a, b):
     ctx = cl.create_some_context()
@@ -48,7 +55,7 @@ def multiply_on_device(a, b):
         np.int32(wB),
         c_g
     )
-    event.wait()
+    # event.wait()
     # queue.finish()
     c = np.empty_like(a)
     # res_np_part = np.dot(a_np_part, b_np)
@@ -60,6 +67,7 @@ def main():
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
+    q = Queue.Queue()
     if rank == 0:
         # a_np = np.random.rand(DIMENSIONS, DIMENSIONS).astype(np.float32)
         # b_np = np.random.rand(DIMENSIONS, DIMENSIONS).astype(np.float32)
@@ -73,12 +81,15 @@ def main():
         b_np = None
     a_np_part = comm.scatter(a_np_parts, root=0)
     b_np = comm.bcast(b_np, root=0)
+    if CHECK_CPU and CLUSTER_CPU_COMPUTATION:
+        t1 = threading.Thread(target=multiply_on_cpu, args=(a_np_part, b_np, q))
+        t1.start()
     c_np_part = multiply_on_device(a_np_part, b_np)
-    print("GPU calculated rank %s" % rank)
+    print("GPU calculated. Rank %s" % rank)
     c_np_parts = comm.gather(c_np_part, root=0)
     if CHECK_CPU and CLUSTER_CPU_COMPUTATION:
-        c_np_cpu_part = np.dot(a_np_part, b_np)
-        c_np_cpu_parts = comm.gather(c_np_cpu_part, root=0)
+        t1.join()
+        c_np_cpu_parts = comm.gather(q.get(), root=0)
     if rank == 0:
             c_np = np.concatenate(c_np_parts)
             if CHECK_CPU and CLUSTER_CPU_COMPUTATION:
