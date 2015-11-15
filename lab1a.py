@@ -6,7 +6,7 @@ import numpy as np
 import pyopencl as cl
 from mpi4py import MPI
 
-DIMENSIONS = 4
+DIMENSIONS = 10000
 CHECK_CPU = True
 CLUSTER_CPU_COMPUTATION = True
 BLOCK_SIZE = 16
@@ -19,7 +19,9 @@ def multiply_on_device(a, b):
     a_g = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=a)
     b_g = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=b)
     with open("kernel.cl", "r") as kernel_source_file:
-        prg = cl.Program(ctx, kernel_source_file.read()).build()
+        kernel_source = kernel_source_file.read()
+        kernel_source = "#define BLOCK_SIZE %s" % BLOCK_SIZE + kernel_source
+        prg = cl.Program(ctx, kernel_source).build()
     c_g = cl.Buffer(ctx, cl.mem_flags.WRITE_ONLY, a.nbytes)
     local_shape = [BLOCK_SIZE, BLOCK_SIZE]    
     hA, wA = a.shape
@@ -33,7 +35,6 @@ def multiply_on_device(a, b):
     else:
         hGlobal = hA
     global_shape = (hGlobal, wGlobal) 
-    print(global_shape)
     print(a.shape, global_shape)
     event = prg.cdot(
         queue, 
@@ -63,8 +64,8 @@ def main():
         # a_np = np.random.rand(DIMENSIONS, DIMENSIONS).astype(np.float32)
         # b_np = np.random.rand(DIMENSIONS, DIMENSIONS).astype(np.float32)
         # a_np = np.arange(DIMENSIONS ** 2).reshape((DIMENSIONS, DIMENSIONS)).astype(np.float32)
-        a_np = np.ones((DIMENSIONS, DIMENSIONS)).astype(np.float32)
-        b_np = np.random.rand(DIMENSIONS, DIMENSIONS).astype(np.float32)
+        a_np = np.random.rand(DIMENSIONS, DIMENSIONS).astype(np.float32)
+        b_np = np.ones((DIMENSIONS, DIMENSIONS)).astype(np.float32)
         a_np_parts = np.split(a_np, size)
         c_np_parts = []
     else:
@@ -73,6 +74,7 @@ def main():
     a_np_part = comm.scatter(a_np_parts, root=0)
     b_np = comm.bcast(b_np, root=0)
     c_np_part = multiply_on_device(a_np_part, b_np)
+    print("GPU calculated rank %s" % rank)
     c_np_parts = comm.gather(c_np_part, root=0)
     if CHECK_CPU and CLUSTER_CPU_COMPUTATION:
         c_np_cpu_part = np.dot(a_np_part, b_np)
