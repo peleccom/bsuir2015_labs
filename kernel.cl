@@ -6,12 +6,19 @@ __kernel void cdot(const __global VALUE_TYPE* A,
                       const __global VALUE_TYPE* B,
                       int hB, int wB,
                       __global VALUE_TYPE* C) {
+
+__local VALUE_TYPE As[BLOCK_SIZE][BLOCK_SIZE];
+__local VALUE_TYPE Bs[BLOCK_SIZE][BLOCK_SIZE];
+
   int gY = get_group_id(0);
   int gX = get_group_id(1);
   int lY = get_local_id(0);
   int lX = get_local_id(1);
+  int y = get_global_id(1);
+  int x = get_global_id(0);
 
-  float Csub = 0;
+
+  VALUE_TYPE sum = 0;
 
 
 
@@ -49,20 +56,19 @@ __kernel void cdot(const __global VALUE_TYPE* A,
              a += aStep, b += bStep) 
     {
 
-        // Declaration of the local memory array As 
-        // used to store the sub-matrix of A
-        __local float As[BLOCK_SIZE][BLOCK_SIZE];
- 
-        // Declaration of the local memory array Bs 
-        // used to store the sub-matrix of B
-        __local float Bs[BLOCK_SIZE][BLOCK_SIZE];
+
  
         // Load the matrices from global memory
         // to local memory; each thread loads
         // one element of each matrix
-        As[lY][lX] = A[a + wA * lY + lX];
-        Bs[lY][lX] = B[b + wB * lY + lX];
- 
+        if (x < wA && y < hA){
+          As[lY][lX] = A[a + wA * lY + lX];
+          Bs[lY][lX] = B[b + wB * lY + lX];
+        }
+        else{
+          As[lY][lX] = 0;
+          Bs[lY][lX] = 0;
+        }
         // Synchronize to make sure the matrices 
         // are loaded
         barrier(CLK_LOCAL_MEM_FENCE);
@@ -71,7 +77,7 @@ __kernel void cdot(const __global VALUE_TYPE* A,
         // each thread computes one element
         // of the block sub-matrix
         for (int k = 0; k < BLOCK_SIZE; ++k)
-            Csub += As[lY][k] * Bs[k][lX];
+            sum += As[lY][k] * Bs[k][lX];
  
         // Synchronize to make sure that the preceding
         // computation is done before loading two new
@@ -83,7 +89,7 @@ __kernel void cdot(const __global VALUE_TYPE* A,
     // Write the block sub-matrix to device memory;
     // each thread writes one element
     int c = wB * BLOCK_SIZE * gY + BLOCK_SIZE * gX;
-    C[c + wB * lY + lX] = Csub;
-
+    if (x < wA && y < hA)
+      C[c + wB * lY + lX] = sum;
 
 }

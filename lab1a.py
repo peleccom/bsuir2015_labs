@@ -6,9 +6,10 @@ import numpy as np
 import pyopencl as cl
 from mpi4py import MPI
 
-DIMENSIONS = 2**11
+DIMENSIONS = 4
 CHECK_CPU = True
 CLUSTER_CPU_COMPUTATION = True
+BLOCK_SIZE = 16
 
 
 
@@ -20,12 +21,20 @@ def multiply_on_device(a, b):
     with open("kernel.cl", "r") as kernel_source_file:
         prg = cl.Program(ctx, kernel_source_file.read()).build()
     c_g = cl.Buffer(ctx, cl.mem_flags.WRITE_ONLY, a.nbytes)
+    local_shape = [BLOCK_SIZE, BLOCK_SIZE]    
     hA, wA = a.shape
     hB, wB = b.shape
-    global_shape = (hA, wA)        
-
-    global_shape = [hA  , wA]
-    local_shape = [16, 16]
+    if (wA  % BLOCK_SIZE):
+        wGlobal = (wA/BLOCK_SIZE + 1) * BLOCK_SIZE
+    else:
+        wGlobal = wA
+    if (hA  % BLOCK_SIZE):
+        hGlobal = ((hA/BLOCK_SIZE) + 1) * BLOCK_SIZE
+    else:
+        hGlobal = hA
+    global_shape = (hGlobal, wGlobal) 
+    print(global_shape)
+    print(a.shape, global_shape)
     event = prg.cdot(
         queue, 
         global_shape, 
